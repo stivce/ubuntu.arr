@@ -1,0 +1,354 @@
+# =============================================================================
+# Caddy Reverse Proxy Configuration - Infrastructure Stack
+# =============================================================================
+# Automatic HTTPS for all home server services using Caddy's internal CA.
+# Caddy generates a root CA certificate that you can install on your devices
+# to eliminate browser security warnings.
+#
+# SETUP:
+# 1. Deploy infrastructure stack: cd infrastructure && ./deploy.sh
+# 2. Download root CA: https://ca.{DOMAIN}/root.crt (accept warning once)
+# 3. Install root CA on your devices (see README.md)
+# 4. All services will be trusted HTTPS from then on
+#
+# DNS: *.{DOMAIN} must resolve to your server IP
+# =============================================================================
+
+# Global options
+{
+    # Use Caddy's internal PKI for self-signed certificates
+    local_certs
+}
+
+# =============================================================================
+# Authelia Forward Auth Snippet (reusable)
+# =============================================================================
+# Import this in any service block to require Authelia login:
+#   import authelia
+# =============================================================================
+(authelia) {
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+        copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+    }
+}
+
+# =============================================================================
+# Authelia Login Portal
+# =============================================================================
+auth.{$DOMAIN} {
+    reverse_proxy authelia:9091
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/authelia-access.log
+        format json
+    }
+}
+
+# =============================================================================
+# CA Certificate Download (NOT protected - must be accessible to install certs)
+# =============================================================================
+ca.{$DOMAIN} {
+    # Serve root.crt as a certificate download (only this file - not the whole
+    # PKI directory, which also contains private keys)
+    handle /root.crt {
+        root * /data/caddy/pki/authorities/local
+        file_server
+        header {
+            Content-Type "application/x-x509-ca-cert"
+            Content-Disposition "attachment; filename=\"caddy-root-ca.crt\""
+        }
+    }
+
+    # Show a directory-listing page for everything else
+    handle {
+        header Content-Type "text/html; charset=utf-8"
+        respond `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Index of /</title>
+    <style>
+        body { font-family: monospace; max-width: 700px; margin: 2em auto; padding: 0 1em; }
+        h1 { font-size: 1.2em; }
+        hr { border: none; border-top: 1px solid #999; margin: 0.5em 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 3px 2em 3px 0; }
+        th { border-bottom: 1px solid #ccc; }
+        a { color: #00e; }
+    </style>
+</head>
+<body>
+<h1>Index of /</h1>
+<hr>
+<table>
+<thead><tr><th>Name</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><a href="/root.crt">root.crt</a></td><td>Caddy Local Root CA Certificate</td></tr>
+</tbody>
+</table>
+<hr>
+</body>
+</html>` 200
+    }
+
+    log {
+        output file /data/logs/ca-access.log
+        format json
+    }
+}
+
+# =============================================================================
+# Infrastructure Services
+# =============================================================================
+
+# WireGuard VPN - Web UI (wg-easy) - protected by Authelia
+wireguard.{$DOMAIN} {
+    import authelia
+    reverse_proxy wg-easy:51821
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/wireguard-access.log
+        format json
+    }
+}
+
+# Dashdot - System resource monitor (embedded in Homarr; no Authelia so the iframe loads)
+dash.{$DOMAIN} {
+    reverse_proxy dashdot:3001
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        Content-Security-Policy "frame-ancestors 'self' https://homarr.{$DOMAIN}"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/dashdot-access.log
+        format json
+    }
+}
+
+# Portainer - Docker management (no Authelia - has own auth)
+portainer.{$DOMAIN} {
+    reverse_proxy portainer:9000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/portainer-access.log
+        format json
+    }
+}
+
+# DDNS Updater - Dynamic DNS management - protected by Authelia
+ddns.{$DOMAIN} {
+    import authelia
+    reverse_proxy ddns-updater:8000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/ddns-access.log
+        format json
+    }
+}
+
+# =============================================================================
+# Media Automation Stack (arr-stack)
+# =============================================================================
+
+# Radarr - Movie automation
+radarr.{$DOMAIN} {
+    reverse_proxy radarr:7878
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/radarr-access.log
+        format json
+    }
+}
+
+# Sonarr - TV show automation
+sonarr.{$DOMAIN} {
+    reverse_proxy sonarr:8989
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/sonarr-access.log
+        format json
+    }
+}
+
+# Lidarr - Music automation
+lidarr.{$DOMAIN} {
+    reverse_proxy lidarr:8686
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/lidarr-access.log
+        format json
+    }
+}
+
+# Bazarr - Subtitle automation
+bazarr.{$DOMAIN} {
+    reverse_proxy bazarr:6767
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/bazarr-access.log
+        format json
+    }
+}
+
+# Prowlarr - Indexer manager
+prowlarr.{$DOMAIN} {
+    reverse_proxy prowlarr:9696
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/prowlarr-access.log
+        format json
+    }
+}
+
+# Jellyfin - Media server
+jellyfin.{$DOMAIN} {
+    reverse_proxy jellyfin:8096
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/jellyfin-access.log
+        format json
+    }
+}
+
+# Jellyseerr - Request management
+jellyseerr.{$DOMAIN} {
+    reverse_proxy jellyseerr:5055
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/jellyseerr-access.log
+        format json
+    }
+}
+
+# Homarr - Dashboard
+homarr.{$DOMAIN} {
+    reverse_proxy homarr:7575
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/homarr-access.log
+        format json
+    }
+}
+
+# Deluge - Torrent client (accessed via gluetun container)
+deluge.{$DOMAIN} {
+    # NOTE: Use gluetun container name, not deluge
+    # Deluge uses network_mode: service:gluetun
+    reverse_proxy gluetun:8112
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    log {
+        output file /data/logs/deluge-access.log
+        format json
+    }
+}

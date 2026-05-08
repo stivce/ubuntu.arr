@@ -1,0 +1,146 @@
+# =============================================================================
+# Infrastructure Stack - Core Home Server Services
+# =============================================================================
+# This stack provides core infrastructure services for the home server:
+# - Caddy: Reverse proxy with automatic HTTPS
+# - Portainer: Docker management UI
+# - DDNS Updater: Dynamic DNS client
+# - Authelia: Authentication portal for protected services
+# - WireGuard: VPN for secure remote access to home network
+#
+# Deploy with: ./deploy.sh
+# =============================================================================
+
+# Logging configuration - applied to all services for log rotation
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Caddy reverse proxy with automatic HTTPS
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    networks:
+      - home_network
+    ports:
+      - 80:80       # HTTP (redirects to HTTPS)
+      - 443:443     # HTTPS
+      - 443:443/udp # HTTP/3
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+      - DOMAIN=${DOMAIN:-yourdomain.com}
+      - ACME_EMAIL=${ACME_EMAIL:-admin@yourdomain.com}
+    volumes:
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/caddy/data:/data
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/caddy/config:/config
+    restart: always
+    logging: *default-logging
+
+  # Portainer - Docker management UI
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    networks:
+      - home_network
+    ports:
+      - 9443:9443   # HTTPS Web UI
+      - 9000:9000   # HTTP Web UI (optional)
+      - 8000:8000   # Edge agent (disable if conflicts with ddns-updater)
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/portainer:/data
+    restart: always
+    logging: *default-logging
+
+  # DDNS Updater - Automatic dynamic DNS updates
+  ddns-updater:
+    image: qmcgaw/ddns-updater:latest
+    container_name: ddns-updater
+    networks:
+      - home_network
+    ports:
+      - 8080:8000   # Web UI (container listens on 8000)
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    volumes:
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/ddns-updater:/updater/data
+    restart: always
+    logging: *default-logging
+
+  # WireGuard VPN - Secure remote access to home network (with Web UI)
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:latest
+    container_name: wg-easy
+    networks:
+      - home_network
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - LANGUAGE=${WIREGUARD_LANGUAGE:-en}
+      - WG_HOST=${WIREGUARD_SERVERURL:-auto}
+      - PASSWORD_HASH=${WIREGUARD_PASSWORD_HASH:-}
+      - PORT=51821
+      - WG_PORT=${WIREGUARD_SERVERPORT:-51820}
+      - WG_DEFAULT_DNS=${WIREGUARD_PEERDNS:-1.1.1.1}
+      - WG_ALLOWED_IPS=${WIREGUARD_ALLOWEDIPS:-0.0.0.0/0}
+      - WG_PERSISTENT_KEEPALIVE=25
+    volumes:
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/wg-easy:/etc/wireguard
+    ports:
+      - 51820:51820/udp  # WireGuard VPN
+      - 51821:51821/tcp  # Web UI
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    restart: always
+    logging: *default-logging
+
+  # Dashdot - System resource monitor (CPU, RAM, storage, network)
+  # Access: https://dash.{DOMAIN} (Authelia protected)
+  dashdot:
+    image: mauricenino/dashdot:latest
+    container_name: dashdot
+    networks:
+      - home_network
+    privileged: true
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - /:/mnt/host:ro
+    expose:
+      - 3001
+    restart: always
+    logging: *default-logging
+
+  # Authelia - Authentication portal for protected services
+  # Protects: wireguard, ca, ddns (via Caddy forward_auth)
+  # Login portal: https://auth.{DOMAIN}
+  authelia:
+    image: authelia/authelia:latest
+    container_name: authelia
+    networks:
+      - home_network
+    environment:
+      - TZ=${TZ:-Europe/Vienna}
+      - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET:-}
+      - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY:-}
+    volumes:
+      - ${INFRASTRUCTURE_CONFIG_DIR:-/data/docker/infrastructure/config}/authelia:/config
+    expose:
+      - 9091
+    restart: always
+    logging: *default-logging
+
+networks:
+  home_network:
+    name: home_network
+    driver: bridge

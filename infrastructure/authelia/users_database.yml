@@ -1,0 +1,20 @@
+# =============================================================================
+# Authelia Users Database
+# =============================================================================
+# This file defines users who can log in to Authelia-protected services.
+#
+# Generate a password hash with:
+#   docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'YOUR_PASSWORD'
+#
+# IMPORTANT: Replace the example user below with your own credentials!
+# =============================================================================
+users:
+  admin:
+    disabled: false
+    displayname: 'Admin'
+    # DEFAULT PASSWORD: 'changeme' - CHANGE THIS IMMEDIATELY!
+    # Generate your own: docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password 'YOUR_PASSWORD'
+    password: '$argon2id$v=19$m=65536,t=3,p=4$BjRPKOmgMIIRL0YH6Gq97w$CHANGE_THIS_HASH'
+    email: 'admin@example.com'
+    groups:
+      - 'admins'

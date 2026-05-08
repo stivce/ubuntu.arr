@@ -1,0 +1,61 @@
+# ========================
+# Claude
+# ========================
+.claude
+CLAUDE.md
+
+# ========================
+# Environment files
+# ========================
+.env
+*.env
+!.env.example
+
+# ========================
+# Docker
+# ========================
+docker-compose.override.yml
+
+# Application data and configs (if stored locally)
+/config/
+/data/
+
+# ========================
+# Secrets / Keys
+# ========================
+*.pem
+*.key
+*.crt
+*.cer
+id_rsa
+id_ed25519
+secrets.yml
+*.vault
+.vault_pass
+
+# ========================
+# OS
+# ========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+Thumbs.db
+
+# ========================
+# Editor / IDE
+# ========================
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# ========================
+# Backup files
+# ========================
+*.bak
+*.backup
+*.tmp
+*.old

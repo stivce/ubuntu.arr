@@ -1,0 +1,59 @@
+# =============================================================================
+# Authelia Configuration Template
+# =============================================================================
+# This file is templated by deploy.sh - __DOMAIN__ is replaced with your domain.
+# Manual edits to the DEPLOYED copy (in config dir) are preserved across deploys.
+# =============================================================================
+
+server:
+  address: 'tcp://0.0.0.0:9091/'
+
+log:
+  level: 'info'
+
+# Authentication portal URL
+authentication_backend:
+  file:
+    path: '/config/users_database.yml'
+    watch: true
+    password:
+      algorithm: 'argon2'
+      argon2:
+        variant: 'argon2id'
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+        key_length: 32
+        salt_length: 16
+
+session:
+  cookies:
+    - domain: '__DOMAIN__'
+      authelia_url: 'https://auth.__DOMAIN__'
+
+storage:
+  local:
+    path: '/config/db.sqlite3'
+
+# Access control - protect specific subdomains
+access_control:
+  default_policy: 'deny'
+  rules:
+    # Protected infrastructure services (require login)
+    - domain: 'wireguard.__DOMAIN__'
+      policy: 'one_factor'
+    - domain: 'ddns.__DOMAIN__'
+      policy: 'one_factor'
+
+# Filesystem notifier (no SMTP needed)
+# Password reset tokens are written to /config/notification.txt
+notifier:
+  filesystem:
+    filename: '/config/notification.txt'
+
+identity_validation:
+  reset_password:
+    jwt_secret: '__JWT_SECRET__'
+
+# Secrets (replaced by deploy script)
+# These can also be set via environment variables

@@ -1,0 +1,244 @@
+# =============================================================================
+# Media Automation Stack (arr-stack)
+# =============================================================================
+# This stack provides media automation and streaming services:
+# - Gluetun + Deluge: VPN-routed torrenting
+# - *arr apps: Radarr, Sonarr, Lidarr, Prowlarr, Bazarr
+# - Jellyfin: Media streaming server
+# - Jellyseerr: Request management
+# - Homarr: Dashboard
+#
+# Deploy with: ./deploy.sh
+# Requires: infrastructure stack (for Caddy reverse proxy)
+# =============================================================================
+
+# Logging configuration - applied to all services for log rotation
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # VPN container for routing Deluge traffic through Mullvad/NordVPN
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      app_network:
+        aliases:
+          - gluetun
+          - deluge  # CRITICAL: Allows Arr apps to reach Deluge as "deluge"
+    ports:
+      - 8112:8112      # Deluge Web UI
+      - 6881:6881      # BitTorrent TCP
+      - 6881:6881/udp  # BitTorrent UDP
+      - 58846:58846    # Deluge RPC (for Arr apps)
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-mullvad}
+      - VPN_TYPE=${VPN_TYPE:-wireguard}
+      # WireGuard configuration (works for both Mullvad and NordVPN)
+      # For Mullvad: set MULLVAD_PRIVATE_KEY in .env
+      # For NordVPN: set WIREGUARD_PRIVATE_KEY in .env
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY:-${MULLVAD_PRIVATE_KEY:-}}
+      - WIREGUARD_ADDRESSES=${MULLVAD_ADDRESSES:-}
+      - SERVER_CITIES=${MULLVAD_SERVER_CITIES:-}
+      # NordVPN configuration
+      - OPENVPN_USER=${NORDVPN_USER:-}
+      - OPENVPN_PASSWORD=${NORDVPN_PASSWORD:-}
+      - SERVER_COUNTRIES=${NORDVPN_SERVER_COUNTRIES:-}
+      # Allow Docker subnet for inter-container communication
+      - FIREWALL_OUTBOUND_SUBNETS=${DOCKER_SUBNET:-172.18.0.0/16},${INFRASTRUCTURE_SUBNET:-172.19.0.0/16}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/gluetun:/gluetun
+    restart: always
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:9999/v1/vpn/status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # Deluge torrent client - routes ALL traffic through gluetun VPN
+  deluge:
+    image: lscr.io/linuxserver/deluge:latest
+    container_name: deluge
+    network_mode: service:gluetun  # Routes all traffic through VPN
+    # No networks: - uses gluetun's network
+    # No ports: - ports exposed on gluetun service
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+      - DELUGE_LOGLEVEL=${DELUGE_LOGLEVEL:-error}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/deluge:/config
+      - ${DATA_DIR:-/data/media}:/data
+      - ${DATA_DIR:-/data/media}/downloads:/downloads
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    restart: always
+    logging: *default-logging
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/lidarr:/config
+      - ${DATA_DIR:-/data/media}:/data
+    ports:
+      - 8686:8686
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - deluge
+      - prowlarr
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/bazarr:/config
+      - ${DATA_DIR:-/data/media}:/data
+    ports:
+      - 6767:6767
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - sonarr
+      - radarr
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    ports:
+      - 7878:7878
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/radarr:/config
+      - ${DATA_DIR:-/data/media}:/data
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - deluge
+      - prowlarr
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    ports:
+      - 8989:8989
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/sonarr:/config
+      - ${DATA_DIR:-/data/media}:/data
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - deluge
+      - prowlarr
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    ports:
+      - 9696:9696
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/prowlarr:/config
+    restart: always
+    logging: *default-logging
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports:
+      - 8096:8096
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/jellyfin:/config
+      - ${DATA_DIR:-/data/media}/tvseries:/data/tvshows
+      - ${DATA_DIR:-/data/media}/anime:/data/anime
+      - ${DATA_DIR:-/data/media}/movies:/data/movies
+      - ${DATA_DIR:-/data/media}/iptv:/data/iptv
+    restart: always
+    logging: *default-logging
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    ports:
+      - 5055:5055
+    networks:
+      - app_network
+    environment:
+      - LOG_LEVEL=${JELLYSEERR_LOG_LEVEL:-debug}
+      - TZ=${TZ:-Europe/Vienna}
+    volumes:
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/jellyseerr:/app/config
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - jellyfin
+
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    ports:
+      - 7575:7575
+    networks:
+      - app_network
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Vienna}
+      - SECRET_ENCRYPTION_KEY=${HOMARR_SECRET_KEY:?HOMARR_SECRET_KEY must be set in .env (generate with: openssl rand -hex 32)}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Optional: Docker integration
+      - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/homarr:/appdata
+    restart: unless-stopped
+    logging: *default-logging
+
+networks:
+  app_network:
+    external: true
+    name: home_network
