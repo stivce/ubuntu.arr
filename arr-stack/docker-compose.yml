@@ -231,7 +231,7 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Europe/Vienna}
-      SECRET_ENCRYPTION_KEY: ${HOMARR_SECRET_KEY:?HOMARR_SECRET_KEY must be set in .env (generate with: openssl rand -hex 32)}
+      SECRET_ENCRYPTION_KEY: ${HOMARR_SECRET_KEY}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock  # Optional: Docker integration
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/homarr:/appdata
