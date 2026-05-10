@@ -125,7 +125,7 @@ _restore_cleanup() {
     if [[ $exit_code -ne 0 ]]; then
         echo -e "${RED}Restore FAILED. Rolling back...${NC}"
         if [[ -n "${SNAPSHOT_FILE:-}" ]] && [[ -f "${SNAPSHOT_FILE}" ]]; then
-            sudo tar -xzf "${SNAPSHOT_FILE}" -C "$(dirname "${ARR_CONFIG_DIR}")" 2>/dev/null \
+            tar -xzf "${SNAPSHOT_FILE}" -C "$(dirname "${ARR_CONFIG_DIR}")" 2>/dev/null \
                 && echo -e "${GREEN}✓ Rolled back to pre-restore state${NC}" \
                 || echo -e "${RED}✗ Rollback failed. Snapshot at: ${SNAPSHOT_FILE}${NC}"
         fi
@@ -150,7 +150,7 @@ restore_arr() {
     fi
 
     local dest="${ARR_CONFIG_DIR}/${name}"
-    sudo rm -rf "$dest"
+    rm -rf "$dest"
     mkdir -p "$dest"
 
     # Extract backup zip - *arr backups contain the DB and config.xml at root
@@ -179,7 +179,7 @@ restore_tar() {
         return
     fi
 
-    sudo rm -rf "${ARR_CONFIG_DIR:?}/${name}"
+    rm -rf "${ARR_CONFIG_DIR:?}/${name}"
     mkdir -p "${ARR_CONFIG_DIR}/${name}"
     tar -xzf "$tarfile" -C "${ARR_CONFIG_DIR}"
     echo -e "${GREEN}  ✓ ${name} restored${NC}"
