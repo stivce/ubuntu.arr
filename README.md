@@ -31,7 +31,7 @@ Creates the shared `home_network`. Must be deployed first.
 | **Bazarr**      | `linuxserver/bazarr`       | Subtitle automation |
 | **Jellyfin**    | `linuxserver/jellyfin`     | Media streaming |
 | **Jellyseerr**  | `fallenbagel/jellyseerr`   | Media request portal |
-| **Homarr**      | `ghcr.io/ajnart/homarr`    | Dashboard |
+| **Homarr**      | `ghcr.io/homarr-labs/homarr` | Dashboard |
 
 ---
 
@@ -48,24 +48,20 @@ cp .env.example .env
 #   AUTHELIA_DEFAULT_PASSWORD_HASH=  (see Authelia section below)
 #   VPN_SERVICE_PROVIDER=            (mullvad | nordvpn) and matching credentials
 
-./deploy.sh
+./arr.sh deploy
 ```
 
-`deploy.sh` is idempotent. It generates Authelia's JWT/session/storage secrets if missing, copies the Caddyfile only if not yet deployed (set `FORCE_CADDYFILE=true` to overwrite), and refuses to bring up Compose if `HOMARR_SECRET_KEY` is empty.
-
-To deploy the stacks individually:
+`arr.sh` is the single entrypoint — run it with no arguments to see all commands. `deploy` is idempotent: it generates Authelia secrets if missing, copies the Caddyfile only if not yet deployed (set `FORCE_CADDYFILE=true` to overwrite), and refuses to start if `HOMARR_SECRET_KEY` is empty.
 
 ```bash
-cd infrastructure && ./deploy.sh   # required first
-cd ../arr-stack && ./deploy.sh
-```
-
-To tear everything down:
-
-```bash
-./destroy.sh              # stop containers, keep volumes + configs
-./destroy.sh --volumes    # also remove docker volumes
-./destroy.sh --all        # also delete config dirs on disk (irreversible)
+./arr.sh deploy           # deploy full stack (infrastructure + media)
+./arr.sh destroy          # stop containers, keep volumes + configs
+./arr.sh destroy --volumes  # also remove docker volumes
+./arr.sh destroy --all    # also delete config dirs on disk (irreversible)
+./arr.sh backup           # back up all service configs
+./arr.sh restore <file>   # restore from a backup archive
+./arr.sh status           # show container status for both stacks
+./arr.sh logs [service]   # follow logs
 ```
 
 ---
@@ -127,7 +123,8 @@ To switch to Let's Encrypt: replace `local_certs` in `infrastructure/Caddyfile` 
 ```
 ubuntu.arr/
 ├── .env / .env.example       # single config file for both stacks (root)
-├── deploy.sh / destroy.sh    # master orchestrators
+├── arr.sh                    # single entrypoint (deploy, destroy, backup, restore, status, logs)
+├── deploy.sh / destroy.sh    # underlying orchestrators called by arr.sh
 ├── lib/deploy-helpers.sh     # shared bash helpers (env, secrets, ddns, caddy)
 ├── infrastructure/
 │   ├── docker-compose.yml
@@ -139,8 +136,8 @@ ubuntu.arr/
 └── arr-stack/
     ├── docker-compose.yml
     ├── deploy.sh
-    ├── backup.sh             # API + tar-based backups
-    └── restore.sh
+    ├── backup.sh             # API + tar-based backups (called by arr.sh backup)
+    └── restore.sh            # restore from archive (called by arr.sh restore)
 ```
 
 Runtime data lives **outside** the repo:
@@ -158,9 +155,8 @@ Runtime data lives **outside** the repo:
 ## Backup & restore
 
 ```bash
-cd arr-stack
-./backup.sh                    # writes to /data/backups/arr-stack/, keeps last 5
-./restore.sh /data/backups/arr-stack/arr-stack-backup-YYYYMMDD-HHMMSS.tar.gz
+./arr.sh backup                # writes to /data/backups/arr-stack/, keeps last 5
+./arr.sh restore /data/backups/arr-stack/arr-stack-backup-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 `backup.sh` uses each *arr app's API for hot DB backups (Sonarr/Radarr/Lidarr/Prowlarr) and tars the rest (Bazarr/Jellyfin/Jellyseerr/Homarr/Deluge). Caddy PKI, Authelia users, and WireGuard peers are included from the infrastructure side. Media files are **not** backed up — sync `/data/media/` separately with `rsync` or `rclone`.
