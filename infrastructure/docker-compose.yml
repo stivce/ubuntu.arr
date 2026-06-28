@@ -114,6 +114,7 @@ services:
     privileged: true
     environment:
       - TZ=${TZ:-Europe/Vienna}
+      - DASHDOT_FS_TYPE_FILTER=cifs,9p,fuse.rclone,fuse.mergerfs,iso9660,fuse.shfs,autofs
     volumes:
       - /:/mnt/host:ro
     expose:
