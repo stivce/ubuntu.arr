@@ -79,8 +79,7 @@ services:
       - DELUGE_LOGLEVEL=${DELUGE_LOGLEVEL:-error}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/deluge:/config
-      - ${DATA_DIR:-/data/media}:/data
-      - ${DATA_DIR:-/data/media}/downloads:/downloads
+      - ${DOWNLOADS_DIR:-/mnt/downloads}:/downloads
     depends_on:
       gluetun:
         condition: service_healthy
@@ -98,7 +97,8 @@ services:
       - TZ=${TZ:-Europe/Vienna}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/lidarr:/config
-      - ${DATA_DIR:-/data/media}:/data
+      - ${MEDIA_DIR:-/mnt/media}:/data/media
+      - ${DOWNLOADS_DIR:-/mnt/downloads}:/data/downloads
     ports:
       - 8686:8686
     restart: always
@@ -118,7 +118,7 @@ services:
       - TZ=${TZ:-Europe/Vienna}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/bazarr:/config
-      - ${DATA_DIR:-/data/media}:/data
+      - ${MEDIA_DIR:-/mnt/media}:/data/media
     ports:
       - 6767:6767
     restart: always
@@ -140,7 +140,8 @@ services:
       - TZ=${TZ:-Europe/Vienna}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/radarr:/config
-      - ${DATA_DIR:-/data/media}:/data
+      - ${MEDIA_DIR:-/mnt/media}:/data/media
+      - ${DOWNLOADS_DIR:-/mnt/downloads}:/data/downloads
     restart: always
     logging: *default-logging
     depends_on:
@@ -160,7 +161,8 @@ services:
       - TZ=${TZ:-Europe/Vienna}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/sonarr:/config
-      - ${DATA_DIR:-/data/media}:/data
+      - ${MEDIA_DIR:-/mnt/media}:/data/media
+      - ${DOWNLOADS_DIR:-/mnt/downloads}:/data/downloads
     restart: always
     logging: *default-logging
     depends_on:
@@ -196,10 +198,10 @@ services:
       - TZ=${TZ:-Europe/Vienna}
     volumes:
       - ${ARR_CONFIG_DIR:-/data/docker/arr-stack/config}/jellyfin:/config
-      - ${DATA_DIR:-/data/media}/tvseries:/data/tvshows
-      - ${DATA_DIR:-/data/media}/anime:/data/anime
-      - ${DATA_DIR:-/data/media}/movies:/data/movies
-      - ${DATA_DIR:-/data/media}/iptv:/data/iptv
+      - ${MEDIA_DIR:-/mnt/media}/tvseries:/data/tvshows
+      - ${MEDIA_DIR:-/mnt/media}/anime:/data/anime
+      - ${MEDIA_DIR:-/mnt/media}/movies:/data/movies
+      - ${MEDIA_DIR:-/mnt/media}/iptv:/data/iptv
     restart: always
     logging: *default-logging
 
