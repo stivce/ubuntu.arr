@@ -185,6 +185,19 @@ services:
     restart: always
     logging: *default-logging
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    networks:
+      - app_network
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ:-Europe/Vienna}
+    ports:
+      - 8191:8191
+    restart: unless-stopped
+    logging: *default-logging
+
   jellyfin:
     image: lscr.io/linuxserver/jellyfin:latest
     container_name: jellyfin
